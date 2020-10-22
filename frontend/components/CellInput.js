@@ -89,9 +89,7 @@ export const CellInput = ({
             keys["Ctrl-D"] = () => {
                 if (cm.somethingSelected()) {
                     const sels = cm.getSelections()
-                    if (all_equal(sels)) {
-                        // TODO
-                    }
+                    cm.execCommand("selectNextOccurrence");
                 } else {
                     const cursor = cm.getCursor()
                     const token = cm.getTokenAt(cursor)
@@ -329,6 +327,43 @@ export const CellInput = ({
         </pluto-input>
     `
 }
+
+function isSelectedRange(ranges, from, to) {
+    for (var i = 0; i < ranges.length; i++) {
+      if (ranges[i].from() == from && ranges[i].to() == to) {
+          return true;
+      }
+      if (CodeMirror.cmpPos(ranges[i].from(), from) == 0 &&
+          CodeMirror.cmpPos(ranges[i].to(), to) == 0) {
+              return true;
+      }
+    }
+    return false;
+  }
+
+CodeMirror.commands.selectNextOccurrence = function(cm) {
+    var from = cm.getCursor("from"), to = cm.getCursor("to");
+    var fullWord = cm.state.sublimeFindFullWord == cm.doc.sel;
+    if (CodeMirror.cmpPos(from, to) == 0) {
+      var word = wordAt(cm, from);
+      if (!word.word) return;
+      cm.setSelection(word.from, word.to);
+      fullWord = true;
+    } else {
+      var text = cm.getRange(from, to);
+      var query = fullWord ? new RegExp("\\b" + text + "\\b") : text;
+      var cur = cm.getSearchCursor(query, to);
+      var found = cur.findNext();
+      if (!found) {
+        cur = cm.getSearchCursor(query, CodeMirror.Pos(cm.firstLine(), 0));
+        found = cur.findNext();
+      }
+      if (!found || isSelectedRange(cm.listSelections(), cur.from(), cur.to())) return
+      cm.addSelection(cur.from(), cur.to());
+    }
+    if (fullWord)
+      cm.state.sublimeFindFullWord = cm.doc.sel;
+  };
 
 const no_autocomplete = " \t\r\n([])+-=/,;'\"!#$%^&*~`<>|"
 
