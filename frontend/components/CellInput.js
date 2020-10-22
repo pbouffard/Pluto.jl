@@ -181,6 +181,9 @@ export const CellInput = ({
             keys["Shift-Alt-Down"] = () => {
                 duplicate_up_down(false);
             }
+            keys["Shift-Alt-F"]  = () => {
+                cm.execCommand("indentAuto");
+            }
             const swap = (a, i, j) => {
                 ;[a[i], a[j]] = [a[j], a[i]]
             }
