@@ -817,7 +817,8 @@ export class Editor extends Component {
                     `Shortcuts 🎹
 
     Shift+Enter:   run cell/selected cells
-    ${ctrl_or_cmd_name}+Enter:   run cell and add cell below
+    ${ctrl_or_cmd_name}${mac_or_pc_join}Enter:   run cell and add cell below
+
     Delete or Backspace:   delete empty cell
 
     PageUp or fn+Up:   select cell above
@@ -828,6 +829,7 @@ export class Editor extends Component {
 
     Ctrl+Q:   interrupt notebook
     ${ctrl_or_cmd_name}${mac_or_pc_join}S:   submit all changes
+    ${alt_or_option_name}${mac_or_pc_join}Z:   toggle word wrap
 
     ${ctrl_or_cmd_name}${mac_or_pc_join}C:   copy selected cells
     ${ctrl_or_cmd_name}${mac_or_pc_join}X:   cut selected cells
