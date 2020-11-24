@@ -10,8 +10,6 @@ function endswith(vec::Vector{T}, suffix::Vector{T}) where T
     liv >= lis && (view(vec, (liv - lis + 1):liv) == suffix)
 end
 
-isurl(s::String) = startswith(s, "http://") || startswith(s, "https://")
-
 include("./WebSocketFix.jl")
 
 
@@ -26,6 +24,9 @@ function HTTP.closebody(http::HTTP.Stream{HTTP.Messages.Request,S}) where S <: I
         catch end
     end
 end
+
+# https://github.com/JuliaWeb/HTTP.jl/pull/609
+HTTP.URIs.escapeuri(query::Union{Vector,Dict}) = isempty(query) ? HTTP.URIs.absent : join((HTTP.URIs.escapeuri(k, v) for (k, v) in query), "&")
 
 # from https://github.com/JuliaLang/julia/pull/36425
 function detectwsl()
@@ -53,10 +54,12 @@ function open_in_default_browser(url::AbstractString)::Bool
     end
 end
 
+isurl(s::String) = startswith(s, "http://") || startswith(s, "https://")
+
 """
     Pluto.run()
 
-Start Pluto! Yayo!
+Start Pluto!
 
 ## Keyword arguments
 You can configure some of Pluto's more technical behaviour using keyword arguments, but this is mostly meant to support testing and strange setups like Docker. If you want to do something exciting with Pluto, you can probably write a creative notebook to do it!
@@ -126,7 +129,7 @@ function run(session::ServerSession)
         end
     end
 
-    kill_server = Ref{Function}(identity)
+    shutdown_server = Ref{Function}(() -> ())
 
     servertask = @async HTTP.serve(hostIP, UInt16(port), stream=true, server=serversocket) do http::HTTP.Stream
         # messy messy code so that we can use the websocket on the same port as the HTTP server
@@ -143,29 +146,28 @@ function run(session::ServerSession)
                     while !eof(clientstream)
                         # This stream contains data received over the WebSocket.
                         # It is formatted and MsgPack-encoded by send(...) in PlutoConnection.js
+                        local parentbody
                         try
                             message = collect(WebsocketFix.readmessage(clientstream))
-                            # TODO: view to avoid memory allocation
                             parentbody = unpack(message)
 
                             process_ws_message(session, parentbody, clientstream)
                         catch ex
                             if ex isa InterruptException
-                                kill_server[]()
+                                shutdown_server[]()
                             elseif ex isa HTTP.WebSockets.WebSocketError || ex isa EOFError
                                 # that's fine!
-                            elseif ex isa InexactError
-                                # that's fine! this is a (fixed) HTTP.jl bug: https://github.com/JuliaWeb/HTTP.jl/issues/471
-                                # TODO: remove this switch
                             else
                                 bt = stacktrace(catch_backtrace())
-                                @warn "Reading WebSocket client stream failed for unknown reason:" exception = (ex, bt)
+                                @warn "Reading WebSocket client stream failed for unknown reason:" parentbody exception = (ex, bt)
                             end
                         end
                     end
                     catch ex
                         if ex isa InterruptException
-                            kill_server[]()
+                            shutdown_server[]()
+                        elseif ex isa HTTP.WebSockets.WebSocketError || ex isa EOFError
+                            # that's fine!
                         else
                             bt = stacktrace(catch_backtrace())
                             @warn "Reading WebSocket client stream failed for unknown reason:" exception = (ex, bt)
@@ -174,7 +176,7 @@ function run(session::ServerSession)
                 end
             catch ex
                 if ex isa InterruptException
-                    kill_server[]()
+                    shutdown_server[]()
                 elseif ex isa Base.IOError
                     # that's fine!
                 elseif ex isa ArgumentError && occursin("stream is closed", ex.msg)
@@ -221,38 +223,7 @@ function run(session::ServerSession)
         end
     end
 
-    address = let
-        root = if session.options.server.root_url === nothing
-            hostStr = string(hostIP)
-            hostPretty = if isa(hostIP, Sockets.IPv6)
-                if hostStr == "::1"
-                    "localhost"
-                else
-                    "[$(hostStr)]"
-                end
-            elseif hostStr == "127.0.0.1" # Assuming the other alternative is IPv4
-                "localhost"
-            else
-                hostStr
-            end
-            portPretty = Int(port)
-            "http://$(hostPretty):$(portPretty)/"
-        else
-            session.options.server.root_url
-        end
-
-        Sys.set_process_title("Pluto server - $root")
-
-        qargs = Dict{String, String}()
-        session.options.security.require_secret_for_access && (qargs["secret"]="$(session.secret)")
-        nbfile = session.options.server.notebook
-        if !isempty(nbfile)
-            nb = (isurl(nbfile) ? SessionActions.open_url : SessionActions.open)(session, nbfile; compiler_options=session.options.compiler)
-            root *= "edit"
-            qargs["id"] = "$(nb.notebook_id)"
-        end
-        root * "?" * join(["$k=$v" for (k, v) in qargs], "&")
-    end
+    address = pretty_address(session, hostIP, port)
 
     println()
     if session.options.server.launch_browser && open_in_default_browser(address)
@@ -264,7 +235,7 @@ function run(session::ServerSession)
     println("Press Ctrl+C in this terminal to stop Pluto")
     println()
 
-    kill_server[] = () -> @sync begin
+    shutdown_server[] = () -> @sync begin
         println("\n\nClosing Pluto... Restart Julia for a fresh session. \n\nHave a nice day! 🎈")
         @async close(serversocket)
         # TODO: HTTP has a kill signal?
@@ -274,7 +245,7 @@ function run(session::ServerSession)
         end
         empty!(session.connected_clients)
         for (notebook_id, ws) in WorkspaceManager.workspaces
-            @async WorkspaceManager.unmake_workspace(ws)
+            @async WorkspaceManager.unmake_workspace(wait(ws))
         end
     end
 
@@ -283,13 +254,52 @@ function run(session::ServerSession)
         wait(servertask)
     catch e
         if e isa InterruptException
-            kill_server[]()
+            shutdown_server[]()
         elseif e isa TaskFailedException
             # nice!
         else
             rethrow(e)
         end
     end
+end
+
+function pretty_address(session::ServerSession, hostIP, port)
+    root = if session.options.server.root_url === nothing
+        host_str = string(hostIP)
+        host_pretty = if isa(hostIP, Sockets.IPv6)
+            if host_str == "::1"
+                "localhost"
+            else
+                "[$(host_str)]"
+            end
+        elseif host_str == "127.0.0.1" # Assuming the other alternative is IPv4
+            "localhost"
+        else
+            host_str
+        end
+        port_pretty = Int(port)
+        "http://$(host_pretty):$(port_pretty)/"
+    else
+        @assert endswith(session.options.server.root_url, "/")
+        session.options.server.root_url
+    end
+
+    Sys.set_process_title("Pluto server - $root")
+
+    url_params = Dict{String,String}()
+
+    if session.options.security.require_secret_for_access
+        url_params["secret"] = session.secret
+    end
+    fav_notebook = session.options.server.notebook
+    new_root = if fav_notebook !== nothing
+        key = isurl(fav_notebook) ? "url" : "path"
+        url_params[key] = string(fav_notebook)
+        root * "open"
+    else
+        root
+    end
+    merge(HTTP.URIs.URI(new_root), query=url_params) |> string
 end
 
 "All messages sent over the WebSocket get decoded+deserialized and end up here."

@@ -1,5 +1,5 @@
-import { html, Component, useState, useEffect } from "../common/Preact.js"
-import immer from "https://cdn.jsdelivr.net/npm/immer@7.0.9/dist/immer.esm.js"
+import { html, Component, useState, useEffect } from "../imports/Preact.js"
+import immer from "../imports/immer.js"
 
 import { create_pluto_connection, resolvable_promise } from "../common/PlutoConnection.js"
 import { create_counter_statistics, send_statistics_if_enabled, store_statistics_sample, finalize_statistics, init_feedback } from "../common/Feedback.js"
@@ -446,7 +446,7 @@ export class Editor extends Component {
                             const inputs_promise = Promise.all(
                                 this.state.notebook.cells.map((cell_data) => {
                                     return this.client.send(
-                                        "getinput",
+                                        "get_input",
                                         {},
                                         {
                                             notebook_id: this.state.notebook.notebook_id,
@@ -466,6 +466,16 @@ export class Editor extends Component {
                                     loading: false,
                                 })
                                 console.info("All cells loaded! 🚂 enjoy the ride")
+                                // do one autocomplete to trigger its precompilation
+                                this.client.send(
+                                    "complete",
+                                    {
+                                        query: "sq",
+                                    },
+                                    {
+                                        notebook_id: this.state.notebook.notebook_id,
+                                    }
+                                )
                             })
                         }
                     )
@@ -723,6 +733,17 @@ export class Editor extends Component {
                             }
                         }
                     })
+            },
+            reshow_cell: (cell_id, objectid, dim) => {
+                this.client.send(
+                    "reshow_cell",
+                    {
+                        objectid: objectid,
+                        dim: dim,
+                    },
+                    { notebook_id: this.state.notebook.notebook_id, cell_id: cell_id },
+                    false
+                )
             },
         }
 

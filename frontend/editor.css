@@ -3,18 +3,13 @@
 @import url("https://cdn.jsdelivr.net/npm/fontsource-roboto-mono@3.0.3/500-normal.css");
 @import url("https://cdn.jsdelivr.net/npm/fontsource-roboto-mono@3.0.3/700-normal.css");
 
-/* @import url("https://fonts.googleapis.com/css?family=Vollkorn:600,600i,700,700i,900,900i&display=swap&subset=cyrillic,cyrillic-ext,greek,latin-ext,vietnamese"); */
-@import url("https://cdn.jsdelivr.net/npm/fontsource-vollkorn@3.0.3/600.css");
-@import url("https://cdn.jsdelivr.net/npm/fontsource-vollkorn@3.0.3/700.css");
-@import url("https://cdn.jsdelivr.net/npm/fontsource-vollkorn@3.0.3/900.css");
-
 /* @import url("https://fonts.googleapis.com/css?family=Alegreya+Sans:400,400i,500,500i,700,700i&display=swap&subset=cyrillic,cyrillic-ext,greek,greek-ext,latin-ext,vietnamese"); */
 @import url("https://cdn.jsdelivr.net/npm/fontsource-alegreya-sans@3.0.10/400.css");
 @import url("https://cdn.jsdelivr.net/npm/fontsource-alegreya-sans@3.0.10/500.css");
 @import url("https://cdn.jsdelivr.net/npm/fontsource-alegreya-sans@3.0.10/700.css");
 
 @import url("juliamono.css");
-
+@import url("vollkorn.css");
 /* @import url("https://fonts.googleapis.com/css2?family=Lato&display=swap"); */
 @import url("https://cdn.jsdelivr.net/npm/fontsource-lato@3.0.9/400.css");
 
@@ -97,6 +92,7 @@ pluto-output h4,
 pluto-output h5,
 pluto-output h6 {
     font-family: "Vollkorn", serif;
+    font-feature-settings: "lnum", "pnum";
     font-weight: 600;
     color: hsl(0, 0%, 12%);
     margin-block-start: 1rem;
@@ -169,7 +165,8 @@ pluto-output p:first-child {
 
 /* I actually just want to get rid of the margin-block-start on the p tag,
     but css doesn't allow that. So I have to move the list up, instead of not moving it up */
-pluto-output li p + ul {
+pluto-output li p + ul,
+pluto-output li p + ol {
     margin-block-start: calc(var(--pluto-cell-spacing) * -1);
 }
 pluto-output p:last-child {
@@ -196,6 +193,9 @@ pluto-output.rich_output code {
     padding: 3px;
     border-radius: 8px;
     background-color: #f2f2f2;
+}
+pluto-output.rich_output pre code {
+    padding: 0px;
 }
 
 pluto-output pre {
@@ -240,6 +240,7 @@ pluto-output div.admonition {
 }
 pluto-output div.admonition .admonition-title {
     font-family: "Vollkorn", sans-serif;
+    font-feature-settings: "lnum", "pnum";
     color: white;
     font-weight: 600;
     margin-block-end: 0px;
@@ -324,6 +325,12 @@ pluto-output div.footnote p.footnote-title ~ * {
 }
 pluto-output div.footnote p:last-child {
     padding-bottom: 0px;
+}
+
+pluto-output.scroll_y {
+    max-height: 80vh;
+    max-height: 400px;
+    overflow: auto;
 }
 
 pluto-output table {
@@ -446,6 +453,7 @@ div.export_title {
 a.export_card header {
     margin-block: 0px;
     font-family: "Vollkorn", sans;
+    font-feature-settings: "lnum", "pnum";
     font-size: 1rem;
 }
 a.export_card section {
@@ -681,6 +689,11 @@ pluto-output {
     background-color: white;
 }
 
+.scroll_y {
+    overflow-y: auto;
+    max-height: 80vh;
+}
+
 pluto-output:focus {
     outline: none;
 }
@@ -709,7 +722,6 @@ pluto-output > assignee:empty {
 
 pluto-output > div {
     flex-shrink: 0;
-    overflow-x: auto;
     overflow-y: hidden;
 }
 
@@ -875,6 +887,8 @@ pluto-cell.code_folded > pluto-shoulder > button > span::after {
 /* TRAFFIC LIGHT */
 
 pluto-trafficlight {
+    /* --patternHeight is derived from the pattern length (16px) div sin(45deg) = 16px * sqrt(2)  */
+    --patternHeight: 22.62741699797px;
     box-sizing: content-box;
     margin-right: -1px; /* fix a visual glitch of imperfect alignment */
     width: 4px;
@@ -887,6 +901,17 @@ pluto-trafficlight {
     border-bottom-left-radius: 4px;
     border-left-color: rgba(0, 0, 0, 0.1);
     background: rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+pluto-trafficlight::after {
+    content: "";
+    /* Calc needs units everywhere to work */
+    top: calc(0px - 2 * var(--patternHeight));
+    left: 0;
+    width: 100%;
+    height: calc(100% + 2 * var(--patternHeight));
+    position: absolute;
 }
 
 /* in ascending order of severity: */
@@ -928,21 +953,21 @@ pluto-cell.errored > pluto-trafficlight {
     background-clip: content-box;
 }
 
-pluto-cell.queued > pluto-trafficlight {
+pluto-cell.queued > pluto-trafficlight::after {
     background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0) 8px, rgba(0, 0, 0, 0.1) 8px, rgba(0, 0, 0, 0.1) 16px);
     background-clip: content-box;
-    animation: 1000s linear 0s infinite running scrollbackground;
-    background-size: 4px 22.62741699797px; /* 16 * sqrt(2) */
+    animation: 1s linear 0s infinite running scrollbackground;
+    background-size: 4px var(--patternHeight);
 }
 
-pluto-cell.running > pluto-trafficlight {
+pluto-cell.running > pluto-trafficlight::after {
     background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1) 8px, rgba(0, 0, 0, 0.2) 8px, rgba(0, 0, 0, 0.2) 16px);
     background-clip: content-box;
-    animation: 1000s linear 0s infinite running scrollbackground;
-    background-size: 4px 22.62741699797px; /* 16 * sqrt(2) */
+    animation: 1s linear 0s infinite running scrollbackground;
+    background-size: 4px var(--patternHeight);
 }
 
-pluto-cell.queued.errored > pluto-trafficlight {
+pluto-cell.queued.errored > pluto-trafficlight::after {
     background: repeating-linear-gradient(
         -45deg,
         hsla(0, 70%, 80%, 0.7),
@@ -951,24 +976,24 @@ pluto-cell.queued.errored > pluto-trafficlight {
         hsla(0, 70%, 80%, 0.05) 16px
     );
     background-clip: content-box;
-    animation: 1000s linear 0s infinite running scrollbackground;
-    background-size: 4px 22.62741699797px; /* 16 * sqrt(2) */
+    animation: 1s linear 0s infinite running scrollbackground;
+    background-size: 4px var(--patternHeight); /* 16 * sqrt(2) */
 }
 
-pluto-cell.running.errored > pluto-trafficlight {
+pluto-cell.running.errored > pluto-trafficlight::after {
     background: repeating-linear-gradient(-45deg, hsla(0, 100%, 80%, 1), hsla(0, 100%, 80%, 1) 8px, hsla(0, 70%, 80%, 0.7) 8px, hsla(0, 70%, 80%, 0.7) 16px);
     background-clip: content-box;
-    animation: 1000s linear 0s infinite running scrollbackground;
-    background-size: 4px 22.62741699797px; /* 16 * sqrt(2) */
+    animation: 1s linear 0s infinite running scrollbackground;
+    background-size: 4px var(--patternHeight); /* 16 * sqrt(2) */
 }
 
+/* Define --patternHeight for this keyframes animation to work! */
 @keyframes scrollbackground {
     0% {
-        background-position-y: 0px;
+        transform: translateY(0px);
     }
     100% {
-        background-position-y: 22627.41699797px;
-        /* 16 * sqrt(2) */
+        transform: translateY(calc(var(--patternHeight)));
     }
 }
 
@@ -1231,6 +1256,9 @@ pluto-helpbox > header > input {
     font-weight: inherit;
     font-size: inherit;
     border: none;
+}
+pluto-helpbox.notfound > header > input {
+    color: red;
 }
 pluto-helpbox > header > input:focus {
     outline: none;
