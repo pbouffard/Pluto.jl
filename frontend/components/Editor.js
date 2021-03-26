@@ -758,11 +758,13 @@ patch: ${JSON.stringify(
 
     Ctrl+Q:   interrupt notebook
     ${ctrl_or_cmd_name}${mac_or_pc_join}S:   submit all changes
-    ${alt_or_option_name}${mac_or_pc_join}Z:   toggle word wrap
+    ${alt_or_option_name}${mac_or_pc_join}Z:   toggle word wrap 🌖 
 
     ${ctrl_or_cmd_name}${mac_or_pc_join}C:   copy selected cells
     ${ctrl_or_cmd_name}${mac_or_pc_join}X:   cut selected cells
     ${ctrl_or_cmd_name}${mac_or_pc_join}V:   paste selected cells
+
+    Shift+${alt_or_option_name}${mac_or_pc_join}F:   Auto-indent selected cells  🌖
 
     The notebook file saves every time you run`
                 )
