@@ -1,104 +1,17 @@
-import { code_differs } from "../components/Cell.js"
 import { timeout_promise } from "./PlutoConnection.js"
 
-export const create_counter_statistics = () => {
-    return {
-        numEvals: 0, // integer
-        numRuns: 0, // integer
-        numBondSets: 0, // integer
-    }
-}
-
-const first_line = (cell) => /(.*)/.exec(cell.local_code.body)[0]
-const count_matches = (pattern, haystack) => (haystack.match(pattern) || []).length
-const value_counts = (values) =>
-    values.reduce((prev_counts, val) => {
-        prev_counts[val] = prev_counts[val] ? prev_counts[val] + 1 : 1
-        return prev_counts
-    }, {})
-const sum = (values) => values.reduce((a, b) => a + b, 0)
-
-export const finalize_statistics = async (state, client, counter_statistics) => {
-    const cells = state.notebook.cells
-
-    const statistics = {
-        numCells: cells.length,
-        // integer
-        numErrored: cells.filter((c) => c.errored).length,
-        // integer
-        numFolded: cells.filter((c) => c.code_folded).length,
-        // integer
-        numCodeDiffers: cells.filter(code_differs).length,
-        // integer
-        numMarkdowns: cells.filter((c) => first_line(c).startsWith('md"')).length,
-        // integer
-        numBinds: sum(cells.map((c) => count_matches(/\@bind/g, c.local_code.body))),
-        // integer
-        numBegins: cells.filter((c) => first_line(c).endsWith("begin")).length,
-        // integer
-        numLets: cells.filter((c) => first_line(c).endsWith("let")).length,
-        // integer
-        cellSizes: value_counts(cells.map((c) => count_matches(/\n/g, c.local_code.body) + 1)),
-        // {numLines: numCells, ...}
-        // e.g. {1: 28,  3: 14,  5: 7,  7: 1,  12: 1,  14: 1}
-        runtimes: value_counts(cells.map((c) => Math.floor(Math.log10(c.runtime + 1)))),
-        // {runtime: numCells, ...}
-        // where `runtime` is log10, rounded
-        // e.g. {1: 28,  3: 14,  5: 7,  7: 1,  12: 1,  14: 1}
-        // integer
-        versionPluto: client.version_info == null ? "unkown" : client.version_info.pluto,
-        // string, e.g. "v0.7.10"
-        // versionJulia: client.julia_version,
-        //     // string, e.g. "v1.0.5"
-        timestamp: firebase.firestore.Timestamp.now(),
-        // timestamp (ms)
-        screenWidthApprox: 100 * Math.round(document.body.clientWidth / 100),
-        // number, rounded to nearest multiple of 100
-        docsOpen: parseFloat(window.getComputedStyle(document.querySelector("pluto-helpbox")).height) > 200,
-        // bool
-        hasFocus: document.hasFocus(),
-        // bool
-        numConcurrentNotebooks: NaN, // integer
-        pingTimeWS: NaN, // integer (ms),
-        pingTimeHTTP: NaN, // integer (ms)
-        ...counter_statistics,
-    }
-
-    try {
-        let { message } = await client.send("get_all_notebooks")
-        statistics.numConcurrentNotebooks = message.notebooks.length
-
-        await fetch("ping")
-        const ticHTTP = Date.now()
-        await fetch("ping")
-        statistics.pingTimeHTTP = Date.now() - ticHTTP
-
-        await client.send("ping")
-        const ticWS = Date.now()
-        await client.send("ping")
-        statistics.pingTimeWS = Date.now() - ticWS
-    } catch (ex) {
-        console.log("Failed to measure ping times")
-        console.log(ex)
-    }
-
-    return statistics
-}
-
-export const store_statistics_sample = (statistics) => localStorage.setItem("statistics sample", JSON.stringify(statistics, null, 4))
-
-// TODO
-//document.querySelector("footer a#statistics-info").addEventListener("click", store_statistics_sample)
 
 const feedbackdb = {
     instance: null,
 }
 const init_firebase = () => {
+    // @ts-ignore
     firebase.initializeApp({
         apiKey: "AIzaSyC0DqEcaM8AZ6cvApXuNcNU2RgZZOj7F68",
         authDomain: "localhost",
         projectId: "pluto-feedback",
     })
+    // @ts-ignore
     feedbackdb.instance = firebase.firestore()
 }
 
@@ -111,7 +24,9 @@ export const init_feedback = () => {
 
         timeout_promise(
             feedbackdb.instance.collection("feedback").add({
+                // @ts-ignore
                 feedback: new FormData(e.target).get("opinion"),
+                // @ts-ignore
                 timestamp: firebase.firestore.Timestamp.now(),
                 email: email ? email : "",
             }),
@@ -121,6 +36,7 @@ export const init_feedback = () => {
                 let message = "Submitted. Thank you for your feedback! 💕"
                 console.log(message)
                 alert(message)
+                // @ts-ignore
                 feedbackform.querySelector("#opinion").value = ""
             })
             .catch((error) => {
@@ -132,13 +48,4 @@ export const init_feedback = () => {
             })
         e.preventDefault()
     })
-}
-
-export const send_statistics_if_enabled = (statistics) => {
-    if (localStorage.getItem("statistics enable") && localStorage.getItem("statistics enable") == "true") {
-        timeout_promise(feedbackdb.instance.collection("statistics").add(statistics), 10000).catch((error) => {
-            console.error("Failed to send statistics:")
-            console.error(error)
-        })
-    }
 }

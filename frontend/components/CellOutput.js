@@ -1,17 +1,23 @@
-import { html, Component, useRef, useState, useLayoutEffect, useEffect } from "../imports/Preact.js"
+import { html, Component, useRef, useLayoutEffect, useContext } from "../imports/Preact.js"
 
 import { ErrorMessage } from "./ErrorMessage.js"
 import { TreeView, TableView } from "./TreeView.js"
 
-import { connect_bonds } from "../common/Bond.js"
+import { add_bonds_listener, set_bound_elements_to_their_value } from "../common/Bond.js"
 import { cl } from "../common/ClassTable.js"
 
 import { observablehq_for_cells } from "../common/SetupCellEnvironment.js"
+import { PlutoBondsContext, PlutoContext } from "../common/PlutoContext.js"
 
 export class CellOutput extends Component {
     constructor() {
         super()
+        this.state = {
+            error: null,
+        }
+
         this.old_height = 0
+        // @ts-ignore Is there a way to use the latest DOM spec?
         this.resize_observer = new ResizeObserver((entries) => {
             const new_height = this.base.offsetHeight
 
@@ -54,7 +60,7 @@ export class CellOutput extends Component {
                 mime=${this.props.mime}
             >
                 <assignee>${this.props.rootassignee}</assignee>
-                <${OutputBody} ...${this.props} />
+                ${this.state.error ? html`<div>${this.state.error.message}</div>` : html`<${OutputBody} ...${this.props} />`}
             </pluto-output>
         `
     }
@@ -84,7 +90,7 @@ export let PlutoImage = ({ body, mime }) => {
     return html`<img ref=${imgref} type=${mime} src=${""} />`
 }
 
-export const OutputBody = ({ mime, body, cell_id, all_completed_promise, requests, persist_js_state }) => {
+export const OutputBody = ({ mime, body, cell_id, persist_js_state, last_run_timestamp }) => {
     switch (mime) {
         case "image/png":
         case "image/jpg":
@@ -106,34 +112,21 @@ export const OutputBody = ({ mime, body, cell_id, all_completed_promise, request
                 return html`<${RawHTMLContainer}
                     cell_id=${cell_id}
                     body=${body}
-                    all_completed_promise=${all_completed_promise}
-                    requests=${requests}
                     persist_js_state=${persist_js_state}
+                    last_run_timestamp=${last_run_timestamp}
                 />`
             }
             break
         case "application/vnd.pluto.tree+object":
             return html`<div>
-                <${TreeView}
-                    cell_id=${cell_id}
-                    body=${body}
-                    all_completed_promise=${all_completed_promise}
-                    requests=${requests}
-                    persist_js_state=${persist_js_state}
-                />
+                <${TreeView} cell_id=${cell_id} body=${body} persist_js_state=${persist_js_state} />
             </div>`
             break
         case "application/vnd.pluto.table+object":
-            return html` <${TableView}
-                cell_id=${cell_id}
-                body=${body}
-                all_completed_promise=${all_completed_promise}
-                requests=${requests}
-                persist_js_state=${persist_js_state}
-            />`
+            return html` <${TableView} cell_id=${cell_id} body=${body} persist_js_state=${persist_js_state} />`
             break
         case "application/vnd.pluto.stacktrace+object":
-            return html`<div><${ErrorMessage} cell_id=${cell_id} requests=${requests} ...${body} /></div>`
+            return html`<div><${ErrorMessage} cell_id=${cell_id} ...${body} /></div>`
             break
 
         case "text/plain":
@@ -168,6 +161,7 @@ let IframeContainer = ({ body }) => {
 
             // Apply iframe resizer from the host side
             new Promise((resolve) => x.addEventListener("load", () => resolve()))
+            // @ts-ignore
             window.iFrameResize({ checkOrigin: false }, iframeref.current)
         })
 
@@ -193,8 +187,26 @@ let execute_dynamic_function = async ({ environment, code }) => {
     return result
 }
 
+const is_displayable = (result) => result instanceof Element && result.nodeType === Node.ELEMENT_NODE
+
+/**
+ * @typedef PlutoScript
+ * @type {HTMLScriptElement | { pluto_is_loading_me?: boolean }}
+ */
 const execute_scripttags = async ({ root_node, script_nodes, previous_results_map, invalidation }) => {
     let results_map = new Map()
+
+    // Reattach DOM results from old scripts, you might want to skip reading this
+    for (let node of script_nodes) {
+        if (node.src != null && node.src !== "") {
+        } else {
+            let script_id = node.id
+            let old_result = script_id ? previous_results_map.get(script_id) : null
+            if (is_displayable(old_result)) {
+                node.parentElement.insertBefore(old_result, node)
+            }
+        }
+    }
 
     // Run scripts sequentially
     for (let node of script_nodes) {
@@ -206,8 +218,10 @@ const execute_scripttags = async ({ root_node, script_nodes, previous_results_ma
                 script_el = document.createElement("script")
                 script_el.src = node.src
                 script_el.type = node.type === "module" ? "module" : "text/javascript"
+                // @ts-ignore
                 script_el.pluto_is_loading_me = true
             }
+            // @ts-ignore
             const need_to_await = script_el.pluto_is_loading_me != null
             if (need_to_await) {
                 await new Promise((resolve) => {
@@ -215,15 +229,21 @@ const execute_scripttags = async ({ root_node, script_nodes, previous_results_ma
                     script_el.addEventListener("error", resolve)
                     document.head.appendChild(script_el)
                 })
+                // @ts-ignore
                 script_el.pluto_is_loading_me = undefined
             }
         } else {
             // If there is no src="", we take the content and run it in an observablehq-like environment
             try {
                 let script_id = node.id
+                let old_result = script_id ? previous_results_map.get(script_id) : null
+
+                if (is_displayable(old_result)) {
+                    node.parentElement.insertBefore(old_result, node)
+                }
                 let result = await execute_dynamic_function({
                     environment: {
-                        this: script_id ? previous_results_map.get(script_id) : window,
+                        this: script_id ? old_result : window,
                         currentScript: node,
                         invalidation: invalidation,
                         ...observablehq_for_cells,
@@ -235,8 +255,13 @@ const execute_scripttags = async ({ root_node, script_nodes, previous_results_ma
                     results_map.set(script_id, result)
                 }
                 // Insert returned element
-                if (result instanceof Element && result.nodeType === Node.ELEMENT_NODE) {
-                    node.parentElement.insertBefore(result, node)
+                if (result !== old_result) {
+                    if (is_displayable(old_result)) {
+                        old_result.remove()
+                    }
+                    if (is_displayable(result)) {
+                        node.parentElement.insertBefore(result, node)
+                    }
                 }
             } catch (err) {
                 console.error("Couldn't execute script:", node)
@@ -251,12 +276,18 @@ const execute_scripttags = async ({ root_node, script_nodes, previous_results_ma
 
 let run = (f) => f()
 
-export let RawHTMLContainer = ({ body, all_completed_promise, requests, persist_js_state = false }) => {
+export let RawHTMLContainer = ({ body, persist_js_state = false, last_run_timestamp }) => {
+    let pluto_actions = useContext(PlutoContext)
+    let pluto_bonds = useContext(PlutoBondsContext)
     let previous_results_map = useRef(new Map())
 
     let invalidate_scripts = useRef(() => {})
 
     let container = useRef()
+
+    useLayoutEffect(() => {
+        set_bound_elements_to_their_value(container.current, pluto_bonds)
+    }, [body, persist_js_state, pluto_actions, pluto_bonds])
 
     useLayoutEffect(() => {
         // Invalidate current scripts and create a new invalidation token immediately
@@ -277,22 +308,32 @@ export let RawHTMLContainer = ({ body, all_completed_promise, requests, persist_
                 previous_results_map: persist_js_state ? previous_results_map.current : new Map(),
             })
 
-            if (all_completed_promise != null && requests != null) {
-                connect_bonds(container.current, all_completed_promise, invalidation, requests)
+            if (pluto_actions != null) {
+                set_bound_elements_to_their_value(container.current, pluto_bonds)
+                let remove_bonds_listener = add_bonds_listener(container.current, (name, value, is_first_value) => {
+                    pluto_actions.set_bond(name, value, is_first_value)
+                })
+                invalidation.then(remove_bonds_listener)
             }
 
             // convert LaTeX to svg
             try {
+                // @ts-ignore
                 window.MathJax.typeset([container.current])
             } catch (err) {
                 console.info("Failed to typeset TeX:")
                 console.info(err)
             }
 
-            // Apply julia syntax highlighting
+            // Apply syntax highlighting
             try {
-                for (let code_element of container.current.querySelectorAll("code.language-julia")) {
-                    highlight_julia(code_element)
+                for (let code_element of container.current.querySelectorAll("code")) {
+                    for (let className of code_element.classList) {
+                        if (className.startsWith("language-")) {
+                            // Remove "language-"
+                            highlight(code_element, className.substr(9))
+                        }
+                    }
                 }
             } catch (err) {}
         })
@@ -300,15 +341,20 @@ export let RawHTMLContainer = ({ body, all_completed_promise, requests, persist_
         return () => {
             invalidate_scripts.current?.()
         }
-    })
+    }, [body, persist_js_state, last_run_timestamp, pluto_actions])
 
     return html`<div ref=${container}></div>`
 }
 
 /** @param {HTMLElement} code_element */
-export let highlight_julia = (code_element) => {
+export let highlight = (code_element, language) => {
     if (code_element.children.length === 0) {
-        window.CodeMirror.runMode(code_element.innerText, "julia", code_element)
-        code_element.classList.add("cm-s-default")
+        // @ts-ignore
+        window.CodeMirror.requireMode(language, function() {
+            window.CodeMirror.runMode(code_element.innerText, language, code_element)
+            code_element.classList.add("cm-s-default")
+        }, {path: function(language) {
+            return `https://cdn.jsdelivr.net/npm/codemirror@5.58.1/mode/${language}/${language}.min.js`
+        }})
     }
 }

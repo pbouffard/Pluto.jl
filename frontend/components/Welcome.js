@@ -12,7 +12,19 @@ const create_empty_notebook = (path, notebook_id = null) => {
     }
 }
 
-const shortpath = (path) => path.split("/").pop().split("\\").pop()
+const split_at_level = (path, level) => path.split(/\/|\\/).slice(-level).join("/")
+
+const shortest_path = (path, allpaths) => {
+    let level = 1
+    for (const otherpath of allpaths) {
+        if (otherpath !== path) {
+            while (split_at_level(path, level) === split_at_level(otherpath, level)) {
+                level++
+            }
+        }
+    }
+    return split_at_level(path, level)
+}
 
 // should strip characters similar to how github converts filenames into the #file-... URL hash.
 // test on: https://gist.github.com/fonsp/f7d230da4f067a11ad18de15bff80470
@@ -159,36 +171,41 @@ export class Welcome extends Component {
                 document.body.classList.remove("loading")
             })
 
-            fetch_latest_pluto_version().then((version) => {
-                const remote = version
-                const local = this.client.version_info.pluto
+            fetch_latest_pluto_version()
+                .then((version) => {
+                    const remote = version
+                    const local = this.client.version_info.pluto
 
-                const base1 = (n) => "1".repeat(n)
+                    const base1 = (n) => "1".repeat(n)
 
-                console.log(`Pluto version ${local}`)
-                if (remote != local) {
-                    const rs = remote.slice(1).split(".").map(Number)
-                    const ls = local.slice(1).split(".").map(Number)
+                    console.log(`Pluto version ${local}`)
+                    if (remote != local) {
+                        const rs = remote.slice(1).split(".").map(Number)
+                        const ls = local.slice(1).split(".").map(Number)
 
-                    // if the semver can't be parsed correctly, we always show it to the user
-                    if (rs.length == 3 && ls.length == 3) {
-                        if (!rs.some(isNaN) && !ls.some(isNaN)) {
-                            // JS orders string arrays lexicographically, which - in base 1 - is exactly what we want
-                            if (rs.map(base1) <= ls.map(base1)) {
-                                return
+                        // if the semver can't be parsed correctly, we always show it to the user
+                        if (rs.length == 3 && ls.length == 3) {
+                            if (!rs.some(isNaN) && !ls.some(isNaN)) {
+                                // JS orders string arrays lexicographically, which - in base 1 - is exactly what we want
+                                if (rs.map(base1) <= ls.map(base1)) {
+                                    return
+                                }
                             }
                         }
+                        console.log(`Newer version ${remote} is available`)
+                        alert(
+                            "A new version of Pluto.jl is available! 🎉\n\n    You have " +
+                                local +
+                                ", the latest is " +
+                                remote +
+                                '.\n\nYou can update Pluto.jl using the julia package manager:\n\nimport Pkg; Pkg.update("Pluto")\n\nAfterwards, exit Pluto.jl and restart julia.'
+                        )
                     }
-                    console.log(`Newer version ${remote} is available`)
-                    alert(
-                        "A new version of Pluto.jl is available! 🎉\n\n    You have " +
-                            local +
-                            ", the latest is " +
-                            remote +
-                            '.\n\nYou can update Pluto.jl using the julia package manager:\n\nimport Pkg; Pkg.update("Pluto")\n\nAfterwards, exit Pluto.jl and restart julia.'
-                    )
-                }
-            })
+                })
+                .catch(() => {
+                    // Having this as a uncaught promise broke the frontend tests for me
+                    // so I'm just swallowing the error explicitly - DRAL
+                })
 
             // to start JIT'ting
             this.client.send(
@@ -269,11 +286,11 @@ export class Welcome extends Component {
 
     render() {
         let recents = null
-
         if (this.state.combined_notebooks == null) {
             recents = html`<li><em>Loading...</em></li>`
         } else {
             console.log(this.state.combined_notebooks)
+            const all_paths = this.state.combined_notebooks.map((nb) => nb.path)
             recents = this.state.combined_notebooks.map((nb) => {
                 const running = nb.notebook_id != null
                 return html`<li
@@ -287,7 +304,7 @@ export class Welcome extends Component {
                     <button onclick=${() => this.on_session_click(nb)} title=${running ? "Shut down notebook" : "Start notebook in background"}>
                         <span></span>
                     </button>
-                    <a href=${running ? link_edit(nb.notebook_id) : link_open_path(nb.path)} title=${nb.path}>${shortpath(nb.path)}</a>
+                    <a href=${running ? link_edit(nb.notebook_id) : link_open_path(nb.path)} title=${nb.path}>${shortest_path(nb.path, all_paths)}</a>
                 </li>`
             })
         }

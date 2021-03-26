@@ -2,50 +2,71 @@ import UUIDs: UUID, uuid1
 import .ExpressionExplorer: SymbolsState, FunctionNameSignaturePair, FunctionName
 import .Configuration
 
-"The (information needed to create the) dependency graph of a notebook. Cells are linked by the names of globals that they define and reference. 🕸"
-Base.@kwdef struct NotebookTopology
-    nodes::Dict{Cell,ReactiveNode} = Dict{Cell,ReactiveNode}()
+struct BondValue
+    value::Any
+end
+function Base.convert(::Type{BondValue}, dict::Dict)
+    BondValue(dict["value"])
 end
 
-# `topology[cell]` is a shorthand for `get(topology, cell, ReactiveNode())`
-# with the performance benefit of only generating ReactiveNode() when needed
-function Base.getindex(topology::NotebookTopology, cell::Cell)::ReactiveNode
-    get!(ReactiveNode, topology.nodes, cell)
-end
-
+const ProcessStatus = (
+    ready="ready",
+    starting="starting",
+    no_process="no_process",
+    waiting_to_restart="waiting_to_restart",
+)
 
 "Like a [`Diary`](@ref) but more serious. 📓"
-mutable struct Notebook
+Base.@kwdef mutable struct Notebook
     "Cells are ordered in a `Notebook`, and this order can be changed by the user. Cells will always have a constant UUID."
-    cells::Array{Cell,1}
+    cells_dict::Dict{UUID,Cell}
+    cell_order::Array{UUID,1}
     
-    # i still don't really know what an AbstractString is but it makes this package look more professional
-    path::AbstractString
+    path::String
     notebook_id::UUID
-    topology::NotebookTopology
+    topology::NotebookTopology=NotebookTopology()
 
     # buffer will contain all unfetched updates - must be big enough
-    pendingupdates::Channel
+    # We can keep 1024 updates pending. After this, any put! calls (i.e. calls that push an update to the notebook) will simply block, which is fine.
+    # This does mean that the Notebook can't be used if nothing is clearing the update channel.
+    pendingupdates::Channel=Channel(1024)
 
-    executetoken::Token
+    executetoken::Token=Token()
 
     # per notebook compiler options
     # nothing means to use global session compiler options
-    compiler_options::Union{Nothing,Configuration.CompilerOptions}
+    compiler_options::Union{Nothing,Configuration.CompilerOptions}=nothing
+
+    process_status::String=ProcessStatus.starting
+
+    bonds::Dict{Symbol,BondValue}=Dict{Symbol,BondValue}()
+    wants_to_interrupt::Bool=false
 end
-# We can keep 128 updates pending. After this, any put! calls (i.e. calls that push an update to the notebook) will simply block, which is fine.
-# This does mean that the Notebook can't be used if nothing is clearing the update channel.
-Notebook(cells::Array{Cell,1}, path::AbstractString, notebook_id::UUID) = 
-    Notebook(cells, path, notebook_id, NotebookTopology(), Channel(1024), Token(), nothing)
+
+Notebook(cells::Array{Cell,1}, path::AbstractString, notebook_id::UUID) = Notebook(
+    cells_dict=Dict(map(cells) do cell
+        (cell.cell_id, cell)
+    end),
+    cell_order=map(x -> x.cell_id, cells),
+    path=path,
+    notebook_id=notebook_id,
+)
 
 Notebook(cells::Array{Cell,1}, path::AbstractString=numbered_until_new(joinpath(new_notebooks_directory(), cutename()))) = Notebook(cells, path, uuid1())
 
-function cell_index_from_id(notebook::Notebook, cell_id::UUID)::Union{Int,Nothing}
-    findfirst(c -> c.cell_id == cell_id, notebook.cells)
+function Base.getproperty(notebook::Notebook, property::Symbol)
+    if property == :cells
+        cells_dict = getfield(notebook, :cells_dict)
+        cell_order = getfield(notebook, :cell_order)
+        map(cell_order) do id
+            cells_dict[id]
+        end
+    elseif property == :cell_inputs
+        getfield(notebook, :cells_dict)
+    else
+        getfield(notebook, property)
+    end
 end
-
-
-
 
 const _notebook_header = "### A Pluto.jl notebook ###"
 # We use a creative delimiter to avoid accidental use in code
@@ -60,7 +81,7 @@ emptynotebook(args...) = Notebook([Cell()], args...)
 """
 Save the notebook to `io`, `file` or to `notebook.path`.
 
-In the produced file, cells are not saved in the notebook order. If `notebook.topolgy` is up-to-date, I will save cells in _topological order_. This guarantees that you can run the notebook file outside of Pluto, with `julia my_notebook.jl`.
+In the produced file, cells are not saved in the notebook order. If `notebook.topology` is up-to-date, I will save cells in _topological order_. This guarantees that you can run the notebook file outside of Pluto, with `julia my_notebook.jl`.
 
 Have a look at our [JuliaCon 2020 presentation](https://youtu.be/IAF8DjrQSSk?t=1085) to learn more!
 """
@@ -103,8 +124,15 @@ function save_notebook(io, notebook::Notebook)
     notebook
 end
 
+function open_safe_write(fn::Function, path, mode)
+    file_content = sprint(fn)
+    open(path, mode) do io
+        print(io, file_content)
+    end
+end
+    
 function save_notebook(notebook::Notebook, path::String)
-    open(path, "w") do io
+    open_safe_write(path, "w") do io
         save_notebook(io, notebook)
     end
 end
@@ -185,7 +213,6 @@ function load_notebook(path::String, run_notebook_on_load::Bool=true)::Notebook
 
     loaded = load_notebook_nobackup(path)
     # Analyze cells so that the initial save is in topological order
-    update_caches!(loaded, loaded.cells)
     loaded.topology = updated_topology(loaded.topology, loaded, loaded.cells)
     save_notebook(loaded)
     # Clear symstates if autorun/autofun is disabled. Otherwise running a single cell for the first time will also run downstream cells.
@@ -230,6 +257,9 @@ function move_notebook!(notebook::Notebook, newpath::String)
 
     if oldpath_tame != newpath_tame
         rm(oldpath_tame)
+    end
+    if isdir("$oldpath_tame.assets")
+        mv("$oldpath_tame.assets", "$newpath_tame.assets")
     end
     notebook
 end

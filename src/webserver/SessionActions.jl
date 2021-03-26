@@ -1,9 +1,17 @@
 module SessionActions
 
-import ..Pluto: ServerSession, Notebook, emptynotebook, tamepath, move_notebook!, update_save_run!, putnotebookupdates!, putplutoupdates!, load_notebook, clientupdate_notebook_list, WorkspaceManager, @asynclog
+import ..Pluto: ServerSession, Notebook, emptynotebook, tamepath, new_notebooks_directory, without_dotjl, numbered_until_new, readwrite, move_notebook!, update_save_run!, putnotebookupdates!, putplutoupdates!, load_notebook, clientupdate_notebook_list, WorkspaceManager, @asynclog
 
 struct NotebookIsRunningException <: Exception
     notebook::Notebook
+end
+
+abstract type AbstractUserError <: Exception end
+struct UserError <: AbstractUserError
+    msg::String
+end
+function Base.showerror(io::IO, e::UserError)
+    print(io, e.msg)
 end
 
 function open_url(session::ServerSession, url::AbstractString; kwargs...)
@@ -11,7 +19,15 @@ function open_url(session::ServerSession, url::AbstractString; kwargs...)
     open(session, path; kwargs...)
 end
 
-function open(session::ServerSession, path::AbstractString; run_async=true, compiler_options=nothing)
+function open(session::ServerSession, path::AbstractString; run_async=true, compiler_options=nothing, as_sample=false)
+    if as_sample
+        new_filename = "sample " * without_dotjl(basename(path))
+        new_path = numbered_until_new(joinpath(new_notebooks_directory(), new_filename); suffix=".jl")
+        
+        readwrite(path, new_path)
+        path = new_path
+    end
+
     for nb in values(session.notebooks)
         if realpath(nb.path) == realpath(tamepath(path))
             throw(NotebookIsRunningException(nb))
@@ -54,7 +70,7 @@ function new(session::ServerSession; run_async=true)
     nb
 end
 
-function shutdown(session::ServerSession, notebook::Notebook; keep_in_session=false)
+function shutdown(session::ServerSession, notebook::Notebook; keep_in_session=false, async=false)
     if !keep_in_session
         listeners = putnotebookupdates!(session, notebook) # TODO: shutdown message
         delete!(session.notebooks, notebook.notebook_id)
@@ -63,23 +79,7 @@ function shutdown(session::ServerSession, notebook::Notebook; keep_in_session=fa
             @async close(client.stream)
         end
     end
-    success = WorkspaceManager.unmake_workspace((session, notebook))
+    WorkspaceManager.unmake_workspace((session, notebook); async=async)
 end
 
-function move(session::ServerSession, notebook::Notebook, newpath::AbstractString)
-    result = try
-        if isfile(newpath)
-            (success = false, reason = "File exists already - you need to delete the old file manually.")
-        else
-            move_notebook!(notebook, newpath)
-            putplutoupdates!(session, clientupdate_notebook_list(session.notebooks))
-            WorkspaceManager.cd_workspace((session, notebook), newpath)
-            (success = true, reason = "")
-        end
-    catch ex
-        showerror(stderr, stacktrace(catch_backtrace()))
-        (success = false, reason = sprint(showerror, ex))
-    end
-    result
-end
 end

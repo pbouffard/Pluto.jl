@@ -1,11 +1,13 @@
-import { html, useState, useRef, useLayoutEffect, useEffect, useMemo } from "../imports/Preact.js"
+import { html, useState, useRef, useLayoutEffect, useEffect, useMemo, useContext } from "../imports/Preact.js"
 import immer from "../imports/immer.js"
 import observablehq from "../common/SetupCellEnvironment.js"
 import { cl } from "../common/ClassTable.js"
 
-import { RawHTMLContainer, highlight_julia } from "./CellOutput.js"
+import { RawHTMLContainer, highlight } from "./CellOutput.js"
+import { PlutoContext } from "../common/PlutoContext.js"
 
-export let LiveDocs = ({ desired_doc_query, client, on_update_doc_query, notebook }) => {
+export let LiveDocs = ({ desired_doc_query, on_update_doc_query, notebook }) => {
+    let pluto_actions = useContext(PlutoContext)
     let container_ref = useRef()
     let live_doc_search_ref = useRef()
     let [state, set_state] = useState({
@@ -39,10 +41,10 @@ export let LiveDocs = ({ desired_doc_query, client, on_update_doc_query, noteboo
     useLayoutEffect(() => {
         // Actually, showing the jldoctest stuff wasn't as pretty... should make a mode for that sometimes
         // for (let code_element of container_ref.current.querySelectorAll("code.language-jldoctest")) {
-        //     highlight_julia(code_element)
+        //     highlight(code_element, "julia")
         // }
         for (let code_element of container_ref.current.querySelectorAll("code:not([class])")) {
-            highlight_julia(code_element)
+            highlight(code_element, "julia")
         }
     }, [state.body])
 
@@ -67,7 +69,7 @@ export let LiveDocs = ({ desired_doc_query, client, on_update_doc_query, noteboo
         })
         Promise.race([
             observablehq.Promises.delay(2000, false),
-            client.send("docs", { query: new_query.replace(/^\?/, "") }, { notebook_id: notebook.notebook_id }).then((u) => {
+            pluto_actions.send("docs", { query: new_query.replace(/^\?/, "") }, { notebook_id: notebook.notebook_id }).then((u) => {
                 if (u.message.status === "⌛") {
                     return false
                 }

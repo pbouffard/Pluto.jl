@@ -361,7 +361,9 @@ pluto-output table th {
 pluto-output table > tbody tr:hover {
     background-color: rgba(224, 203, 158, 0.15);
 }
-
+pluto-output table pre {
+    white-space: pre;
+}
 /* HEADER */
 
 body > header {
@@ -379,10 +381,6 @@ body > header {
     font-family: "Roboto Mono", monospace;
     font-weight: 400;
     font-size: 0.75rem;
-}
-
-body.loading > header {
-    background-color: hsla(290, 10%, 59%, 0.14);
 }
 
 body > header.show_export {
@@ -464,9 +462,6 @@ aside#export button.toggle_export {
     margin-left: auto;
     height: 60px;
 }
-body.loading button.toggle_export {
-    display: none;
-}
 
 nav#at_the_top h1 {
     color: black;
@@ -490,8 +485,15 @@ nav#at_the_top > * {
     margin: 10px 0px;
 }
 
+nav#at_the_top > .flex_grow_1 {
+    flex-grow: 1;
+}
+nav#at_the_top > .flex_grow_2 {
+    flex-grow: 2;
+}
+
 nav#at_the_top > a {
-    margin-right: 5rem;
+    /* margin-right: 5rem; */
 }
 
 nav#at_the_top img {
@@ -510,7 +512,7 @@ nav#at_the_top img#logo-small {
     display: none;
 }
 
-@media screen and (max-width: 680px) {
+@media (max-width: 800px) {
     nav#at_the_top img#logo-small {
         display: unset;
     }
@@ -518,12 +520,12 @@ nav#at_the_top img#logo-small {
         display: none;
     }
     nav#at_the_top > a {
-        margin-right: 1rem;
+        /* margin-right: 1rem; */
     }
 }
 
 nav#at_the_top > pluto-filepicker {
-    width: 0px;
+    width: 210px;
     flex-grow: 1;
 
     display: flex;
@@ -618,26 +620,37 @@ li.dir.CodeMirror-hint:before {
     }
 }
 
+body.process_dead > header,
 body.disconnected > header {
-    background-color: rgba(255, 169, 114, 0.56);
     position: sticky;
     top: 0;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
 }
 
-nav:after {
+body.process_dead > header {
+    background-color: rgb(230 88 46 / 38%);
+}
+body.loading > header {
+    background-color: hsla(290, 10%, 59%, 0.14);
+}
+body.disconnected > header {
+    background-color: rgba(255, 169, 114, 0.56);
+}
+
+nav#at_the_top > #process_status {
     font-size: 1rem;
     font-weight: 500;
-    padding: 10px;
+    padding: 5px 10px;
+    margin: 5px;
+    background: white;
+    border-radius: 10px;
+    z-index: 1;
+    margin-left: 1em;
 }
 
-body.disconnected > header > nav#at_the_top:after {
-    content: "Reconnecting...";
-}
-
-body.loading > header > nav:after {
-    content: "Loading...";
+nav#at_the_top > #process_status:empty {
+    display: none;
 }
 
 /* PREAMBLE */
@@ -798,12 +811,8 @@ pluto-input .CodeMirror-empty {
     color: rgba(0, 0, 0, 0.15);
 }
 
-pluto-cell.code_folded > pluto-input {
+pluto-cell:not(.show_input) > pluto-input {
     display: none;
-}
-
-pluto-cell.code_differs > pluto-input {
-    display: unset;
 }
 
 pluto-cell.code_differs > pluto-input > .CodeMirror {
@@ -828,7 +837,8 @@ nav#slide_controls > button {
     cursor: pointer;
     /* color: hsl(204, 86%, 35%); */
     color: black;
-    font-family: "Segoe UI Emoji", JuliaMono, monospace;
+    font-family: "Segoe UI Emoji", "Roboto Mono", monospace;
+    font-size: 0.75rem;
     z-index: 3;
     /* CodeMirror is 2 */
 }
@@ -907,11 +917,21 @@ pluto-trafficlight {
 pluto-trafficlight::after {
     content: "";
     /* Calc needs units everywhere to work */
-    top: calc(0px - 2 * var(--patternHeight));
+    top: calc(0px - 10 * var(--patternHeight));
     left: 0;
     width: 100%;
-    height: calc(100% + 2 * var(--patternHeight));
+    height: calc(100% + 10 * var(--patternHeight));
     position: absolute;
+    opacity: 0;
+}
+
+/*
+ * This class will toggle animation.
+ * Other classes will make animation visible with opacity (which is CHEAP?)
+ * 
+ */
+pluto-cell.activate_animation pluto-trafficlight::after {
+    animation: 10s linear 0s infinite running scrollbackground;
 }
 
 /* in ascending order of severity: */
@@ -956,14 +976,22 @@ pluto-cell.errored > pluto-trafficlight {
 pluto-cell.queued > pluto-trafficlight::after {
     background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0) 8px, rgba(0, 0, 0, 0.1) 8px, rgba(0, 0, 0, 0.1) 16px);
     background-clip: content-box;
-    animation: 1s linear 0s infinite running scrollbackground;
+    /* [1]
+    Queued, Running, Errored are really fast changing props.
+    We make sure to on-off the gradients with opacity and not toggle the animation
+    (Which is running all this time)
+    Make sure the browser won't skip creating a stacking context
+    https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Positioning/Understanding_z_index/The_stacking_context
+    https://www.w3.org/TR/css-color-3/#transparency
+    */
+    opacity: 0.99;
     background-size: 4px var(--patternHeight);
 }
 
 pluto-cell.running > pluto-trafficlight::after {
     background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1) 8px, rgba(0, 0, 0, 0.2) 8px, rgba(0, 0, 0, 0.2) 16px);
     background-clip: content-box;
-    animation: 1s linear 0s infinite running scrollbackground;
+    opacity: 0.99; /* [1] */
     background-size: 4px var(--patternHeight);
 }
 
@@ -976,24 +1004,55 @@ pluto-cell.queued.errored > pluto-trafficlight::after {
         hsla(0, 70%, 80%, 0.05) 16px
     );
     background-clip: content-box;
-    animation: 1s linear 0s infinite running scrollbackground;
+    opacity: 0.99; /* [1] */
     background-size: 4px var(--patternHeight); /* 16 * sqrt(2) */
 }
 
 pluto-cell.running.errored > pluto-trafficlight::after {
     background: repeating-linear-gradient(-45deg, hsla(0, 100%, 80%, 1), hsla(0, 100%, 80%, 1) 8px, hsla(0, 70%, 80%, 0.7) 8px, hsla(0, 70%, 80%, 0.7) 16px);
     background-clip: content-box;
-    animation: 1s linear 0s infinite running scrollbackground;
+    opacity: 0.99; /* [1] */
     background-size: 4px var(--patternHeight); /* 16 * sqrt(2) */
+}
+
+pluto-cell.drop_target {
+    position: relative;
+}
+
+pluto-cell.drop_target pluto-input::after {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    color: black;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    background-color: rgba(255, 255, 255, 0.75);
+    content: "+ Drop file here";
+}
+
+pluto-cell.drop_target.saving_file pluto-input::after {
+    content: "The 💾 File you dropped is being saved... ";
+    color: white;
+    background-color: rgba(3, 92, 151, 0.75);
+}
+
+pluto-cell.drop_target.drop_invalid pluto-input::after {
+    background-color: #ece5e5bf;
+    color: rgba(0, 0, 0, 0.85);
+    content: "Try dropping your file in an empty cell!";
 }
 
 /* Define --patternHeight for this keyframes animation to work! */
 @keyframes scrollbackground {
     0% {
-        transform: translateY(0px);
+        transform: translate(0px, 0px);
     }
     100% {
-        transform: translateY(calc(var(--patternHeight)));
+        transform: translate(0, calc(10 * var(--patternHeight)));
     }
 }
 
@@ -1146,12 +1205,8 @@ pluto-cell.queued > pluto-runarea > button.runcell > span::after {
     background-image: url(https://cdn.jsdelivr.net/gh/ionic-team/ionicons@5.0.0/src/svg/stop-circle-outline.svg);
 }
 
-pluto-cell.code_folded > pluto-runarea {
+pluto-cell:not(.show_input) > pluto-runarea {
     display: none;
-}
-
-pluto-cell.code_differs > pluto-runarea {
-    display: block;
 }
 
 pluto-cell:focus-within > pluto-runarea,
@@ -1392,6 +1447,7 @@ footer a {
 }
 
 footer input {
+    margin: 0px;
     border: 2px solid #818181;
     font-family: inherit;
     font-size: inherit;
@@ -1402,6 +1458,7 @@ footer input {
 
 body > header pluto-filepicker button,
 footer button {
+    margin: 0px;
     background: #896c6c;
     border-radius: 0 3px 3px 0;
     border: 2px solid #896c6c;
@@ -1506,9 +1563,16 @@ body > nav#slide_controls > button.next > span::after {
 
 /* CODEMIRROR HINTS */
 
+.CodeMirror-hints {
+    max-height: calc(20 * 16px);
+    box-sizing: content-box;
+}
+
 li.CodeMirror-hint {
     /* this is the line height rounded to an integer to prevent jiggle */
     height: 16px;
+    /* font-size: 16px; */
+    line-height: 16px;
 }
 
 li.CodeMirror-hint.c_notexported {
@@ -1594,7 +1658,7 @@ pluto-cell.code_differs .cm-s-default .CodeMirror-gutters {
     color: #8d86875e;
 }
 
-.cm-s-default .CodeMirror-linenumber::before {
+.cm-s-default .CodeMirror-linenumber::after {
     content: "⋅";
     font-size: 0.75rem;
 }
@@ -1607,7 +1671,7 @@ pluto-cell.code_differs .cm-s-default .CodeMirror-gutters {
     font-size: 0.75rem;
 }
 
-.cm-s-default .CodeMirror-linenumber:hover::before {
+.cm-s-default .CodeMirror-linenumber:hover::after {
     font-size: 0px;
 }
 
@@ -1683,7 +1747,7 @@ li.CodeMirror-hint.c_Array::before,
 
 .cm-s-default span.cm-error {
     background: #ef6155;
-    color: #776e71;
+    color: #f7f7f7;
 }
 
 .cm-s-default .CodeMirror-activeline-background {

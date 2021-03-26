@@ -27,12 +27,16 @@ import Pluto: update_save_run!, WorkspaceManager, ClientSession, ServerSession, 
 
         @test notebookA.path != notebookB.path
 
+        Sys.iswindows() && sleep(.5) # workaround for https://github.com/JuliaLang/julia/issues/39270
         update_save_run!(🍭, notebookA, notebookA.cells[1])
+        Sys.iswindows() && sleep(.5) # workaround for https://github.com/JuliaLang/julia/issues/39270
         update_save_run!(🍭, notebookB, notebookB.cells[1])
 
         @test notebookB.cells[1].errored == true
 
+        Sys.iswindows() && sleep(.5) # workaround for https://github.com/JuliaLang/julia/issues/39270
         WorkspaceManager.unmake_workspace((🍭, notebookA))
+        Sys.iswindows() && sleep(.5) # workaround for https://github.com/JuliaLang/julia/issues/39270
         WorkspaceManager.unmake_workspace((🍭, notebookB))
     end
     @testset "Variables with secret names" begin
@@ -50,10 +54,10 @@ import Pluto: update_save_run!, WorkspaceManager, ClientSession, ServerSession, 
         fakeclient.connected_notebook = notebook
 
         update_save_run!(🍭, notebook, notebook.cells[1:4])
-        @test notebook.cells[1].output_repr == "1"
-        @test notebook.cells[2].output_repr == "1"
-        @test notebook.cells[3].output_repr == "3"
-        @test notebook.cells[4].output_repr == "3"
+        @test notebook.cells[1].output.body == "1"
+        @test notebook.cells[2].output.body == "1"
+        @test notebook.cells[3].output.body == "3"
+        @test notebook.cells[4].output.body == "3"
         
         WorkspaceManager.unmake_workspace((🍭, notebook))
     end

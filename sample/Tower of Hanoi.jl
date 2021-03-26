@@ -12,7 +12,7 @@ The tower of hanoi is a famous puzzle.
 
 ![setup of the tower of a hanoi](https://upload.wikimedia.org/wikipedia/commons/0/07/Tower_of_Hanoi.jpeg)
 
-The game consists of three rods with disks stacked on top of them. The puzzle will start with all disks in a stack on one of the rods (like in the picture). The goal is to move all the discs to a single stack on  different rod.
+The game consists of three rods with disks stacked on top of them. The puzzle will start with all disks in a stack on one of the rods (like in the picture). The goal is to move all the discs to a single stack on the last rod.
 
 To move the disks, you have to follow the following rules:
 
@@ -96,7 +96,7 @@ end
 md"""
 Now the only rules left to implement are the rules for moving disks. 
 
-We could implement this as another check on states, but it's easier to just write a legal `move` function. Your solution will specify moves for the `move` function, so this will be the only way that the stacks are actually manipulated. That we, we are sure that nothing fishy is happening.
+We could implement this as another check on states, but it's easier to just write a legal `move` function. Your solution will specify moves for the `move` function, so this will be the only way that the stacks are actually manipulated. That way, we are sure that nothing fishy is happening.
 
 We will make our `move` function so that its input consists of a state of the game, and instructions for what to do. Its output will be the new state of the game.
 
@@ -147,7 +147,7 @@ Now you can work on building an actual solution. Some tips:
 """
 
 # ╔═╡ 010dbdbc-a2c5-11ea-34c3-837eae17416f
-function solve(stacks)::Array{Tuple{Int, Int}}
+function solve(start = starting_stacks)::Array{Tuple{Int, Int}}
 	
 	#what to do?
 	
@@ -166,7 +166,7 @@ function run_solution(solver::Function, start = starting_stacks)
 	moves = solver(deepcopy(start)) #apply the solver
 	
 	all_states = Array{Any,1}(undef, length(moves) + 1)
-	all_states[1] = starting_stacks
+	all_states[1] = start
 	
 	for (i, m) in enumerate(moves)
 		try
@@ -223,7 +223,7 @@ check_solution(solve)
 if check_solution(solve)
 	if num_disks >= 8
 		md"""
-		Congratulations, your solution works!
+		#### Congratulations, your solution works! 😎
 		"""
 	else
 		md"""

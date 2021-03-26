@@ -41,7 +41,7 @@ function open_in_default_browser(url::AbstractString)::Bool
             Base.run(`open $url`)
             true
         elseif Sys.iswindows() || detectwsl()
-            Base.run(`powershell.exe Start $url`)
+            Base.run(`powershell.exe Start "$url"`)
             true
         elseif Sys.islinux()
             Base.run(`xdg-open $url`)
@@ -55,6 +55,12 @@ function open_in_default_browser(url::AbstractString)::Bool
 end
 
 isurl(s::String) = startswith(s, "http://") || startswith(s, "https://")
+
+swallow_exception(f, exception_type::Type{T}) where T =
+    try f()
+    catch e
+        isa(e, T) || rethrow(e)
+    end
 
 """
     Pluto.run()
@@ -90,10 +96,11 @@ end
 # Deprecation errors
 
 function run(host::String, port::Union{Nothing,Integer}=nothing; kwargs...)
-    @error "Deprecated in favor of:
+    @error """run(host, port) is deprecated in favor of:
     
-        run(;host=$host, port=$port)
-    "
+        run(;host="$host", port=$port)  
+    
+    """
 end
 
 function run(port::Integer; kwargs...)
@@ -135,57 +142,71 @@ function run(session::ServerSession)
         # messy messy code so that we can use the websocket on the same port as the HTTP server
 
         if HTTP.WebSockets.is_upgrade(http.message)
-            try
-                @assert is_authenticated(session, http.message)
+            if is_authenticated(session, http.message)
+                try
 
-                HTTP.WebSockets.upgrade(http) do clientstream
-                    if !isopen(clientstream)
-                        return
-                    end
-                    try
-                    while !eof(clientstream)
-                        # This stream contains data received over the WebSocket.
-                        # It is formatted and MsgPack-encoded by send(...) in PlutoConnection.js
-                        local parentbody
+                    HTTP.WebSockets.upgrade(http) do clientstream
+                        if !isopen(clientstream)
+                            return
+                        end
                         try
-                            message = collect(WebsocketFix.readmessage(clientstream))
-                            parentbody = unpack(message)
+                        while !eof(clientstream)
+                            # This stream contains data received over the WebSocket.
+                            # It is formatted and MsgPack-encoded by send(...) in PlutoConnection.js
+                            local parentbody
+                            try
+                                message = collect(WebsocketFix.readmessage(clientstream))
+                                parentbody = unpack(message)
+                                
+                                let
+                                    lag = session.options.server.simulated_lag
+                                    (lag > 0) && sleep(lag) # sleep(0) would yield to the process manager which we dont want
+                                end
 
-                            process_ws_message(session, parentbody, clientstream)
+                                process_ws_message(session, parentbody, clientstream)
+                            catch ex
+                                if ex isa InterruptException
+                                    shutdown_server[]()
+                                elseif ex isa HTTP.WebSockets.WebSocketError || ex isa EOFError
+                                    # that's fine!
+                                else
+                                    bt = stacktrace(catch_backtrace())
+                                    @warn "Reading WebSocket client stream failed for unknown reason:" parentbody exception = (ex, bt)
+                                end
+                            end
+                        end
                         catch ex
                             if ex isa InterruptException
                                 shutdown_server[]()
-                            elseif ex isa HTTP.WebSockets.WebSocketError || ex isa EOFError
+                            elseif ex isa HTTP.WebSockets.WebSocketError || ex isa EOFError || (ex isa Base.IOError && occursin("connection reset", ex.msg))
                                 # that's fine!
                             else
                                 bt = stacktrace(catch_backtrace())
-                                @warn "Reading WebSocket client stream failed for unknown reason:" parentbody exception = (ex, bt)
+                                @warn "Reading WebSocket client stream failed for unknown reason:" exception = (ex, bt)
                             end
                         end
                     end
-                    catch ex
-                        if ex isa InterruptException
-                            shutdown_server[]()
-                        elseif ex isa HTTP.WebSockets.WebSocketError || ex isa EOFError
-                            # that's fine!
-                        else
-                            bt = stacktrace(catch_backtrace())
-                            @warn "Reading WebSocket client stream failed for unknown reason:" exception = (ex, bt)
-                        end
+                catch ex
+                    if ex isa InterruptException
+                        shutdown_server[]()
+                    elseif ex isa Base.IOError
+                        # that's fine!
+                    elseif ex isa ArgumentError && occursin("stream is closed", ex.msg)
+                        # that's fine!
+                    else
+                        bt = stacktrace(catch_backtrace())
+                        @warn "HTTP upgrade failed for unknown reason" exception = (ex, bt)
                     end
                 end
-            catch ex
-                if ex isa InterruptException
-                    shutdown_server[]()
-                elseif ex isa Base.IOError
-                    # that's fine!
-                elseif ex isa ArgumentError && occursin("stream is closed", ex.msg)
-                    # that's fine!
-                elseif ex isa AssertionError && occursin("is_authenticated", ex.msg)
-                    # That's fine!
-                else
-                    bt = stacktrace(catch_backtrace())
-                    @warn "HTTP upgrade failed for unknown reason" exception = (ex, bt)
+            else
+                try
+                    HTTP.setstatus(http, 403)
+                    HTTP.startwrite(http)
+                    HTTP.closewrite(http)
+                catch e
+                    if !(e isa Base.IOError)
+                        rethrow(e)
+                    end
                 end
             end
         else
@@ -200,12 +221,7 @@ function run(session::ServerSession)
             end
 
             request_body = IOBuffer(HTTP.payload(request))
-            if eof(request_body)
-                # no request body
-                response_body = HTTP.handle(pluto_router, request)
-            else
-                @warn "HTTP request contains a body, huh?" request_body
-            end
+            response_body = HTTP.handle(pluto_router, request)
     
             request.response::HTTP.Response = response_body
             request.response.request = request
@@ -238,15 +254,15 @@ function run(session::ServerSession)
 
     shutdown_server[] = () -> @sync begin
         println("\n\nClosing Pluto... Restart Julia for a fresh session. \n\nHave a nice day! 🎈")
-        @async close(serversocket)
+        @async swallow_exception(() -> close(serversocket), Base.IOError)
         # TODO: HTTP has a kill signal?
         # TODO: put do_work tokens back 
         for client in values(session.connected_clients)
-            @async close(client.stream)
+            @async swallow_exception(() -> close(client.stream), Base.IOError)
         end
         empty!(session.connected_clients)
         for (notebook_id, ws) in WorkspaceManager.workspaces
-            @async WorkspaceManager.unmake_workspace(wait(ws))
+            @async WorkspaceManager.unmake_workspace(fetch(ws))
         end
     end
 
@@ -285,8 +301,6 @@ function pretty_address(session::ServerSession, hostIP, port)
         session.options.server.root_url
     end
 
-    Sys.set_process_title("Pluto server - $root")
-
     url_params = Dict{String,String}()
 
     if session.options.security.require_secret_for_access
@@ -312,8 +326,7 @@ function process_ws_message(session::ServerSession, parentbody::Dict, clientstre
     messagetype = Symbol(parentbody["type"])
     request_id = Symbol(parentbody["request_id"])
 
-    args = []
-    if haskey(parentbody, "notebook_id")
+    notebook = if haskey(parentbody, "notebook_id") && parentbody["notebook_id"] !== nothing
         notebook = let
             notebook_id = UUID(parentbody["notebook_id"])
             get(session.notebooks, notebook_id, nothing)
@@ -327,17 +340,9 @@ function process_ws_message(session::ServerSession, parentbody::Dict, clientstre
             end
         end
         
-        push!(args, notebook)
-
-        if haskey(parentbody, "cell_id")
-            cell_id = UUID(parentbody["cell_id"])
-            index = cell_index_from_id(notebook, cell_id)
-            if index === nothing
-                @warn "Remote cell not found locally!"
-            else
-                push!(args, notebook.cells[index])
-            end
-        end
+        notebook
+    else
+        nothing
     end
 
     body = parentbody["body"]
@@ -345,7 +350,7 @@ function process_ws_message(session::ServerSession, parentbody::Dict, clientstre
     if haskey(responses, messagetype)
         responsefunc = responses[messagetype]
         try
-            responsefunc(session, body, args..., initiator=Initiator(client.id, request_id))
+            responsefunc(ClientRequest(session, notebook, body, Initiator(client, request_id)))
         catch ex
             @warn "Response function to message of type $(messagetype) failed"
             rethrow(ex)
