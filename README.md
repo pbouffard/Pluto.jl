@@ -1,4 +1,52 @@
+# 🌖 Charon - a fork of Pluto.jl for experimentation
 
+Hello, welcome to Charon! Are you a beginner? Do you know what Pluto.jl is? If not you probably should head over to [Pluto.jl](https://github.com/fonsp/Pluto.jl)! If not, read on:
+
+
+*Metaphor time: Charon is a place for those who love Pluto, and would like to stay in its gravity well, keep a close eye on it, and be able to experiment without worrying about contaminating the surface of the planet. Inhabitants of, and visitors to, Charon are interested in inventing things for their own use, that they hope will one day find practical use of the surface of Pluto. Inhabitants of Pluto, on the other hand, may be aware of Charon, if they look up at the sky from whatever awesome stuff they are doing, but they can safely ignore what's happening on Charon unless they are particularly interested.*
+
+The moon [Charon](https://en.wikipedia.org/wiki/Charon_(moon)), the namesake of this repository, is the largest of the 5 known natural satellites of Pluto. It's about half the diameter of Pluto and about 12% of its mass. Charon is mutually tidally locked with Pluto: both bodies keep the same face towards each other. Undeniably, Charon orbits Pluto and not the other way around but it does exert a small influence on Pluto's motion.
+
+<img alt="Pluto and Charon" src="Pluto-Charon_system-new.gif" width=320 height=207>
+
+[Image Credit: Wikimedia commons (CC BY-SA 4.0)](https://commons.wikimedia.org/wiki/File:Pluto-Charon_system-new.gif)
+
+## What is Charon?
+Hello, this fork of Pluto.jl is intended to include features that upstream Pluto is not interested (at least presently) in incorporating. This allows interested contributors to add, and use, features they are interested in even when these don't align with the mainline development's 'opinionated' development philosophy.
+
+Part of the thinking here is to be able both to respect the 'opinionated' development of Pluto (which has undeniably been a very successful project and probably due in no small part to this), and to allow some experimentation, but without being an undue distraction to the main developers.
+
+A primary goal is that the upstream main branches (or at least releases) should be able to be cleanly merged to this repo's master branch with only trivial merge conflicts. So necessarily the changes in this repo will tend to be minor and often just cosmetic.
+
+Similarly features should be developed in the expectation/hope that they may one day be incorporated upstream, if not necessarily in exactly their initially implemented forms in the fork.
+
+In the fork, the develop branch is intended to house features once they are functional, and keep up to date with Pluto releases. Feature branches should be used to work on distinct features and develop merged into the feature branch regularly.
+
+This being an unofficial fork doesn't mean that good development practices shouldn't be followed! On the contrary particularly for features that are hoped to one day find their way upstream it's important that these could be easily merged if/when upstream finds it worthwhile to do so.
+
+Compatibility: One **really important** principle is that Charon notebooks **not** undermine the Pluto user base by being grossly incompatible with Pluto. It shouldn't be possible, e.g., to start with a colleague's notebook created with Pluto, make some modifications in Charon, and then send back what is then a broken notebook to Pluto. This shouldn't be an issue with cosmetic/UI changes, but anything that starts to deal with the notebook format in any way needs to be designed very carefully with this in mind.
+
+Similarly it's important that users of Charon are well aware that they are using an unofficial, experimental fork. To that end some conspicuous visual indications will be included. We'll adopt the unicode 🌖 (U+1F316, "waning gibbous moon"). For example in the keyboard shortcuts pop up, added key combinations will use 🌖 to indicate that they are Charon-only.
+
+To avoid divergence, the Pluto name and branding aren't changed in Charon, other than the visual indications above. So for example we don't want to `s/Pluto/Charon/g`. This serves to clearly indicate that Charon isn't meant to be a hard fork of Pluto, but is mainly to avoid complicating merging.
+
+## Features/differences
+
+Any added or changed functionality is listed here for easy reference. Some of the early additions were done without using issues/PRs but new ones should use these and reference them here to easily be able to refer back to discussion/design decisions etc.
+
+### Keyboard shortcuts
+* Duplicate lines up/down
+* Auto-indent selection
+* Add next occurrence to selection
+* Toggle wrap lines
+
+# Installation
+
+To discourage non-expert usage of Charon, it won't be a registered package, you need to `dev` it in order to use it. If you don't know what that means then probably you aren't in the audience for Charon.
+  
+**Original Pluto.jl README contents follow:**
+
+---
 
 <blockquote>
 <a href="https://plutojl.org/plutocon2021"><img align="right" src=https://user-images.githubusercontent.com/6933510/111311607-b49a7000-865e-11eb-9c67-dd411b832096.png height="130px"></a>

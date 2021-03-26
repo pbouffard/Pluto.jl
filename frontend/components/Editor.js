@@ -752,9 +752,9 @@ patch: ${JSON.stringify(
 
     PageUp or fn+Up:   select cell above
     PageDown or fn+Down:   select cell below
-    ${ctrl_or_cmd_name}${mac_or_pc_join}${alt_or_option_name}+Up:   duplicate line up
-    ${ctrl_or_cmd_name}${mac_or_pc_join}${alt_or_option_name}+Down:   duplicate line down
-    ${ctrl_or_cmd_name}${mac_or_pc_join}+D:   select next occurrence
+    ${ctrl_or_cmd_name}${mac_or_pc_join}${alt_or_option_name}+Up:   duplicate line up 🌖 
+    ${ctrl_or_cmd_name}${mac_or_pc_join}${alt_or_option_name}+Down:   duplicate line down🌖 
+    ${ctrl_or_cmd_name}${mac_or_pc_join}+D:   select next occurrence 🌖 
 
     Ctrl+Q:   interrupt notebook
     ${ctrl_or_cmd_name}${mac_or_pc_join}S:   submit all changes
@@ -883,9 +883,9 @@ patch: ${JSON.stringify(
                             onClose=${() => this.setState({ export_menu_open: false })}
                         />
                         <nav id="at_the_top">
-                            <a href="./">
+                        <a href="./">
                                 <h1><img id="logo-big" src="img/logo.svg" alt="Pluto.jl" /><img id="logo-small" src="img/favicon_unsaturated.svg" /></h1>
-                            </a>
+                            </a>  <a href="https://github.com/pbouffard/Pluto.jl" target="_blank">(+ 🌖   Charon.jl)</a>
                             <div class="flex_grow_1"></div>
                             <${FilePicker}
                                 client=${this.client}
